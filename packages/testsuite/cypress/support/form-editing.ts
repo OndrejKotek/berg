@@ -1,37 +1,70 @@
+const waitForStableDOM = (iteration = 0) => {
+  const options = {
+    pollInterval: 500,
+    timeout: 10000,
+    mutationObserver: {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeOldValue: true,
+      characterData: true,
+      characterDataOldValue: true,
+    },
+  };
+
+  cy.document().then((document) => {
+    let mutation: MutationRecord[];
+    const target = document;
+    const observer = new MutationObserver((m) => (mutation = m));
+    observer.observe(target, options.mutationObserver);
+
+    cy.wait(options.pollInterval, { log: true }).then(() => {
+      if (!mutation) {
+        cy.log(`No changes detected for over interval ${options.pollInterval}ms!`);
+        cy.log("Continuing with test...");
+        return;
+      } else if (iteration * options.pollInterval < options.timeout) {
+        cy.log("Mutation detected... retrying...");
+        return waitForStableDOM(iteration + 1);
+      } else {
+        throw Error("Timed out waiting for stable DOM");
+      }
+    });
+  });
+};
+
 Cypress.Commands.add("editForm", (formId) => {
   const editButton = "#" + formId + ' a.clickable[data-operation="edit"]';
   cy.get(`#${formId}-editing`).should("not.be.visible");
+  waitForStableDOM();
   cy.get(editButton).click();
-  // Workaround - JBEAP-25005,JBEAP-25046 - the form is sometimes not loaded in time and Cypress is not able to recover
-  // from such state and click the button. Waiting does not help, but multiple manual checks for the visibility
-  // of the button do. Note that the button is clicked just one time (probably) once visible.
-  for (let reClickTry = 0; reClickTry < 5; reClickTry++) {
-    cy.get(editButton).then(($button) => {
-      if ($button.is(":visible")) {
-        cy.get(editButton).click();
-      }
-    });
-  }
-  // workaround - end
+  waitForStableDOM();
   cy.get(`#${formId}-editing`).should("be.visible");
 });
 
 Cypress.Commands.add("saveForm", (formId) => {
   const saveButton = "#" + formId + '-editing button.btn.btn-hal.btn-primary:contains("Save")';
+  waitForStableDOM();
   cy.get(saveButton).scrollIntoView().click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("cancelForm", (formId) => {
   const saveButton = "#" + formId + '-editing button.btn.btn-hal.btn-default:contains("Cancel")';
+  waitForStableDOM();
   cy.get(saveButton).scrollIntoView().click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("resetForm", (formId, managementApi, address) => {
   const resetButton = "#" + formId + ' a.clickable[data-operation="reset"';
+  waitForStableDOM();
   cy.get(resetButton).click();
+  waitForStableDOM();
   cy.get("body").then(($body) => {
     if ($body.find(".modal-footer .btn-hal.btn-primary").length) {
       cy.get(".modal-footer .btn-hal.btn-primary").click({ force: true });
+      waitForStableDOM();
       cy.verifySuccess();
     } else {
       cy.get(".toast-notifications-list-pf .alert-warning")
@@ -77,33 +110,46 @@ Cypress.Commands.add("resetForm", (formId, managementApi, address) => {
 });
 
 Cypress.Commands.add("help", () => {
+  waitForStableDOM();
   cy.get(`span.form-link-label:contains("Help")`).click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("addInTable", (tableId) => {
   const tableWrapper = `#${tableId}_wrapper`;
+  waitForStableDOM();
   cy.get(`${tableWrapper} button.btn.btn-default > span:contains("Add")`).click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("removeFromTable", (tableId, resourceName) => {
   const tableWrapper = `#${tableId}_wrapper`;
   cy.selectInTable(tableId, resourceName);
+  waitForStableDOM();
   cy.get(`${tableWrapper} button.btn.btn-default > span:contains("Remove")`).click();
+  waitForStableDOM();
   cy.get('div.modal-footer > button.btn.btn-hal.btn-primary:contains("Yes")').click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("addSingletonResource", (addSingletonResourceId) => {
+  waitForStableDOM();
   cy.get("#" + addSingletonResourceId + ' .btn-primary:contains("Add")').click();
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("removeSingletonResource", (formId) => {
   const removeButton = "#" + formId + ' a.clickable[data-operation="remove"';
+  waitForStableDOM();
   cy.get(removeButton).click();
+  waitForStableDOM();
   cy.get('div.modal-footer > button.btn.btn-hal.btn-primary:contains("Yes")').click();
+  waitForStableDOM();
 });
 
 /* eslint @typescript-eslint/unbound-method: off */
 Cypress.Commands.add("flip", (formId, attributeName, value) => {
+  waitForStableDOM();
   cy.formInput(formId, attributeName)
     .wait(1000)
     .should(($input) => {
@@ -113,9 +159,11 @@ Cypress.Commands.add("flip", (formId, attributeName, value) => {
         expect($input).to.not.be.checked;
       }
     });
+  waitForStableDOM();
   cy.get('div[data-form-item-group="' + formId + "-" + attributeName + '-editing"] .bootstrap-switch-label:visible')
     .click()
     .wait(1000);
+  waitForStableDOM();
   cy.formInput(formId, attributeName).should(($input) => {
     if (value) {
       expect($input).to.not.be.checked;
@@ -123,6 +171,7 @@ Cypress.Commands.add("flip", (formId, attributeName, value) => {
       expect($input).to.be.checked;
     }
   });
+  waitForStableDOM();
 });
 
 Cypress.Commands.add(
@@ -137,12 +186,17 @@ Cypress.Commands.add(
       formInput = cy.formInput(formId, attributeName);
     }
 
+    waitForStableDOM();
     formInput.click({ force: true }).wait(200).clear();
+    waitForStableDOM();
     formInput.type(value as string, { parseSpecialCharSequences: parseSpecialCharSequences });
+    waitForStableDOM();
     formInput.should("have.value", value);
     formInput.trigger("change");
+    waitForStableDOM();
     // lose focus of current input to close suggestions which can hide buttons.
     formInput.blur();
+    waitForStableDOM();
   }
 );
 
@@ -151,9 +205,12 @@ Cypress.Commands.add("textExpression", (formId, attributeName, value, options = 
 });
 
 Cypress.Commands.add("clearAttribute", (formId, attributeName) => {
+  waitForStableDOM();
   cy.formInput(formId, attributeName).click({ force: true }).wait(200).clear();
+  waitForStableDOM();
   cy.formInput(formId, attributeName).should("have.value", "");
   cy.formInput(formId, attributeName).trigger("change");
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("clearListAttributeItems", (attributeName) => {
@@ -168,12 +225,15 @@ Cypress.Commands.add("clearListAttributeItems", (attributeName) => {
 Cypress.Commands.add("selectInDropdownMenuOnPage", (elementId, value) => {
   // somtimes can be the dropdown menu behind a pop-up alert notification. So we need close them.
   cy.closeAllPopUpNotifications();
+  waitForStableDOM();
   cy.get(`button[data-id="${elementId}"]`).click();
+  waitForStableDOM();
   cy.get(`button[data-id="${elementId}"]`)
     .parent()
     .within(() => {
       cy.get(`a.dropdown-item`).contains(value).click();
     });
+  waitForStableDOM();
 });
 
 Cypress.Commands.add("selectInDropdownMenu", (formId, attributeName, value) => {
